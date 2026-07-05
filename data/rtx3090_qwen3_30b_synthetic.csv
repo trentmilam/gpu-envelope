@@ -1,0 +1,25 @@
+# SYNTHETIC nvidia-smi telemetry for gpu-envelope calibration.
+#
+# THIS IS NOT A REAL CAPTURE. It is a deterministic, in-repo fixture so the
+# calibration harness has an offline, reproducible test target. The two ANCHOR
+# rows (context 49152 and 65536) are pinned to the operator's two REAL on-card
+# observations (checkpoint 2026-06-10: ~20.5 GiB clean / ~22.0 GiB wedged);
+# the other six rows interpolate along the affine law those anchors imply,
+# plus small (<=0.04 GiB) deterministic allocator-jitter noise. A real capture
+# would replace this file; the harness ingests either identically.
+#
+# To capture a REAL sweep on your card (operator-optional), for each context C
+# launch the server at that context and sample steady-state VRAM, e.g.:
+#   nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits
+# then append a "C, <MiB>" row here. Column units are MiB (24 GiB = 24576 MiB).
+#
+# card: RTX 3090 (24576 MiB)   model: Qwen3-30B-A3B IQ4_XS   kv: f16
+context, memory.used [MiB]
+8192, 17183 MiB
+16384, 17900 MiB
+24576, 18729 MiB
+32768, 19425 MiB
+40960, 20244 MiB
+49152, 20992 MiB
+57344, 21740 MiB
+65536, 22528 MiB
