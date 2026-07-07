@@ -31,12 +31,22 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from importlib import resources
 
 import numpy as np
 
 from .envelope import GIB, KV_QUANT_BYTES, CUDA_CONTEXT_GIB, ModelSpec
 
 MIB = 1024 ** 2
+
+# Floor for the held-out-RMSE ratio denominator, and the bound past which the
+# ratio is reported qualitatively rather than as a raw number (see
+# calibrate_and_validate: on clean/near-linear telemetry the GQA-aware fit's
+# held-out RMSE can land at a near-zero, but nonzero, floating-point residual,
+# which would otherwise blow the ratio up to an absurd figure like
+# "549755813888000x worse" on an otherwise perfectly healthy fit).
+_RMSE_FLOOR_GIB = 1e-6
+_RMSE_RATIO_SANE_BOUND = 1000.0
 
 
 def load_telemetry_csv(path: str) -> tuple[np.ndarray, np.ndarray]:
@@ -201,6 +211,12 @@ def calibrate_and_validate(csv_path: str, model: ModelSpec,
 
     gqa_hold_rmse = _rmse(gqa.predict(contexts[hold_idx]), vram_gib[hold_idx])
     naive_hold_rmse = _rmse(naive.predict(contexts[hold_idx]), vram_gib[hold_idx])
+    rmse_improvement_factor = naive_hold_rmse / max(gqa_hold_rmse, _RMSE_FLOOR_GIB)
+    rmse_improvement_label = (
+        "effectively exact fit (>1000x better)"
+        if rmse_improvement_factor > _RMSE_RATIO_SANE_BOUND
+        else f"{rmse_improvement_factor:.0f}x worse"
+    )
 
     # safety consequence at the known-wedge context
     gqa_wedge_pred = float(gqa.predict(wedge_ctx))
@@ -221,8 +237,8 @@ def calibrate_and_validate(csv_path: str, model: ModelSpec,
         "naive_fit": naive,
         "gqa_holdout_rmse_gib": gqa_hold_rmse,
         "naive_holdout_rmse_gib": naive_hold_rmse,
-        "rmse_improvement_factor": (naive_hold_rmse / gqa_hold_rmse
-                                    if gqa_hold_rmse > 0 else float("inf")),
+        "rmse_improvement_factor": rmse_improvement_factor,
+        "rmse_improvement_label": rmse_improvement_label,
         "wedge_ctx": wedge_ctx,
         "budget_gib": budget_gib,
         "true_vram_at_wedge_gib": true_at_wedge,
@@ -233,8 +249,9 @@ def calibrate_and_validate(csv_path: str, model: ModelSpec,
     }
 
 
-# default fixture path (the committed synthetic sweep)
-DEFAULT_TELEMETRY_CSV = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "rtx3090_qwen3_30b_synthetic.csv",
+# default fixture path (the committed synthetic sweep). Resolved as real
+# package data via importlib.resources so it resolves correctly from a real
+# (non-editable) install too, not just the git-checkout layout.
+DEFAULT_TELEMETRY_CSV = str(
+    resources.files("gpuenvelope").joinpath("data", "rtx3090_qwen3_30b_synthetic.csv")
 )

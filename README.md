@@ -43,13 +43,22 @@ python -m gpuenvelope.cli ceiling --kv-quant q4_0
 
 Defaults model the RTX 3090 + Qwen3-30B-A3B IQ4_XS calibration case. Every
 geometry field is overridable (`--vram`, `--n-layers`, `--hidden`,
-`--n-kv-heads`, `--head-dim`, `--weights`, `--kv-quant`, `--safety-fraction`)
-to model any other card/model.
+`--n-kv-heads`, `--head-dim`, `--weights`, `--cuda-context-gib`,
+`--compute-act-count`, `--kv-quant`, `--safety-fraction`) to model any other
+card/model. `--cuda-context-gib` and `--compute-act-count` are the two
+physics constants calibrated on the reference rig — to model a *different*
+card, `--model-name`/`--gpu-name` and **every** geometry field (including
+those two) must be given explicitly; leaving any of them at the reference-rig
+default raises an error instead of silently mixing your label with the old
+rig's numbers.
 
-## Measured results
+## Self-test results
 
 From `eval.py` (exit code `0`, all 30 checks pass, measured on the reference machine
-2026-07-04, numpy 2.5.0):
+2026-07-04, numpy 2.5.0). **These are the physics model's self-consistency
+checks against two real on-card anchor points, not an independent hardware
+benchmark** — see "Honest scope" below and the held-out calibration harness
+further down for the number that actually validates on unseen data:
 
 | Config | Predicted VRAM | Budget (90% of 24 GiB) | Verdict |
 |--------|----------------|------------------------|---------|
@@ -77,7 +86,7 @@ model geometry — so it is a clean 2-parameter fit, well-determined from ≥5
 points.)
 
 It ships with a committed, **clearly-labeled SYNTHETIC** 8-point sweep
-(`data/rtx3090_qwen3_30b_synthetic.csv`) so the test is offline and
+(`gpuenvelope/data/rtx3090_qwen3_30b_synthetic.csv`) so the test is offline and
 deterministic; its two anchor rows are pinned to the real 49152/65536
 observations. Drop in a real capture (command in the CSV header) for a real
 number — a *"fit to YOUR card in 60s"* demo:

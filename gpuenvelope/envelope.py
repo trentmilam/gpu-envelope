@@ -114,8 +114,19 @@ class VramBreakdown:
         )
 
 
-def predict_vram(model: ModelSpec, context: int, kv_quant: str = "f16") -> VramBreakdown:
+def predict_vram(
+    model: ModelSpec,
+    context: int,
+    kv_quant: str = "f16",
+    cuda_context_gib: float = CUDA_CONTEXT_GIB,
+    compute_act_count: float = COMPUTE_BUFFER_ACT_COUNT,
+) -> VramBreakdown:
     """Deterministic VRAM prediction (GiB) for a model at a given context.
+
+    `cuda_context_gib` and `compute_act_count` default to the constants
+    calibrated on the reference RTX 3090 / Qwen3-30B-A3B rig; pass explicit
+    values (CLI: --cuda-context-gib / --compute-act-count) to model a
+    different card rather than silently reusing that rig's physics.
 
     Raises ValueError on an unknown kv_quant or a non-positive context so the
     tool fails loud rather than silently guessing.
@@ -129,12 +140,12 @@ def predict_vram(model: ModelSpec, context: int, kv_quant: str = "f16") -> VramB
 
     bytes_per_elem = KV_QUANT_BYTES[kv_quant]
     kv_bytes = 2 * model.n_layers * context * model.kv_width * bytes_per_elem
-    compute_bytes = COMPUTE_BUFFER_ACT_COUNT * context * model.hidden * 2.0
+    compute_bytes = compute_act_count * context * model.hidden * 2.0
 
     return VramBreakdown(
         weights_gib=model.weights_gib,
         kv_cache_gib=kv_bytes / GIB,
-        cuda_context_gib=CUDA_CONTEXT_GIB,
+        cuda_context_gib=cuda_context_gib,
         compute_buffer_gib=compute_bytes / GIB,
     )
 
@@ -145,6 +156,8 @@ def classify(
     context: int,
     kv_quant: str = "f16",
     safety_fraction: float = DEFAULT_SAFETY_FRACTION,
+    cuda_context_gib: float = CUDA_CONTEXT_GIB,
+    compute_act_count: float = COMPUTE_BUFFER_ACT_COUNT,
 ) -> dict:
     """Classify a candidate config as 'safe' or 'would-wedge'.
 
@@ -159,7 +172,7 @@ def classify(
         raise ValueError(
             f"safety_fraction must be in (0, 1], got {safety_fraction}"
         )
-    bd = predict_vram(model, context, kv_quant)
+    bd = predict_vram(model, context, kv_quant, cuda_context_gib, compute_act_count)
     budget = gpu.budget_gib(safety_fraction)
     total = bd.total_gib
     safe = total <= budget
@@ -184,6 +197,8 @@ def safe_max_context(
     safety_fraction: float = DEFAULT_SAFETY_FRACTION,
     step: int = 256,
     ctx_hi: int = 1_048_576,
+    cuda_context_gib: float = CUDA_CONTEXT_GIB,
+    compute_act_count: float = COMPUTE_BUFFER_ACT_COUNT,
 ) -> int:
     """Bisect the largest context (multiple of `step`) that classifies as safe.
 
@@ -195,7 +210,8 @@ def safe_max_context(
         raise ValueError(f"step must be positive, got {step}")
 
     def fits(ctx: int) -> bool:
-        return classify(gpu, model, ctx, kv_quant, safety_fraction)["safe"]
+        return classify(gpu, model, ctx, kv_quant, safety_fraction,
+                        cuda_context_gib, compute_act_count)["safe"]
 
     lo_units = 1                      # 1 * step is the smallest candidate
     if not fits(lo_units * step):

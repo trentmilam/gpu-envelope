@@ -7,12 +7,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install
         run: pip install -e .
@@ -22,3 +25,28 @@ jobs:
 
       - name: Run CLI tests
         run: python tests/test_cli.py
+
+  wheel-install:
+    # The `pip install -e .` step above keeps the git-checkout-relative data
+    # path valid and would mask a broken package build. This job installs a
+    # real *built* wheel into a clean environment (no source tree on
+    # sys.path) and exercises the flagship `calibrate` command against it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: |
+          pip install build
+          python -m build --wheel
+
+      - name: Install the built wheel
+        run: pip install dist/*.whl
+
+      - name: Run calibrate against the installed wheel (no source tree nearby)
+        working-directory: /tmp
+        run: python -m gpuenvelope.cli calibrate

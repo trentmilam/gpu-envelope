@@ -204,7 +204,7 @@ def main() -> int:
           f"train {calib['train_contexts']}, held-out {calib['holdout_contexts']}")
     print(f"GQA-aware calibrated held-out RMSE: {calib['gqa_holdout_rmse_gib']:.3f} GiB")
     print(f"naive constant baseline held-out RMSE: {calib['naive_holdout_rmse_gib']:.3f} GiB "
-          f"({calib['rmse_improvement_factor']:.0f}x worse)")
+          f"({calib['rmse_improvement_label']})")
     print(f"@ ctx {calib['wedge_ctx']} (real {calib['true_vram_at_wedge_gib']:.2f} GiB, "
           f"budget {calib['budget_gib']:.2f}) -- IN-SAMPLE/TRAIN point, not held-out: "
           f"GQA-aware -> {calib['gqa_wedge_pred_gib']:.2f} GiB "

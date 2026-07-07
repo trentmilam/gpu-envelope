@@ -7,7 +7,11 @@ Examples (from repo root, using the project venv):
   python -m gpuenvelope.cli ceiling --kv-quant q8_0
 
 Defaults model to Qwen3-30B-A3B IQ4_XS and gpu to the RTX 3090 (the calibration
-case). Override geometry with flags to model any other card/model.
+case). To model a different card/model, override --model-name/--gpu-name
+*and* every geometry flag (--weights, --n-layers, --hidden, --n-kv-heads,
+--head-dim, --cuda-context-gib, --compute-act-count) -- leaving any of them
+at the reference-rig default raises an error rather than silently mixing a
+new label with the old rig's numbers.
 """
 from __future__ import annotations
 
@@ -19,6 +23,8 @@ from .envelope import (
     ModelSpec,
     KV_QUANT_BYTES,
     DEFAULT_SAFETY_FRACTION,
+    CUDA_CONTEXT_GIB,
+    COMPUTE_BUFFER_ACT_COUNT,
     classify,
     safe_max_context,
     recovery_ladder,
@@ -32,29 +38,90 @@ def _build_gpu(args) -> GpuSpec:
 
 
 def _build_model(args) -> ModelSpec:
+    # A `None` sentinel means the flag was not passed on the CLI; fill it from
+    # the reference preset so the plain preset invocation behaves exactly as
+    # before. (Value-equality can't tell "omitted" from "explicitly set to a
+    # value that happens to equal the preset default", e.g. head_dim 128.)
     return ModelSpec(
         name=args.model_name,
-        n_layers=args.n_layers,
-        hidden=args.hidden,
-        n_kv_heads=args.n_kv_heads,
-        head_dim=args.head_dim,
-        weights_gib=args.weights,
+        n_layers=args.n_layers if args.n_layers is not None else QWEN3_30B_A3B.n_layers,
+        hidden=args.hidden if args.hidden is not None else QWEN3_30B_A3B.hidden,
+        n_kv_heads=args.n_kv_heads if args.n_kv_heads is not None else QWEN3_30B_A3B.n_kv_heads,
+        head_dim=args.head_dim if args.head_dim is not None else QWEN3_30B_A3B.head_dim,
+        weights_gib=args.weights if args.weights is not None else QWEN3_30B_A3B.weights_gib,
     )
 
 
+def _cuda_context_gib(args) -> float:
+    return args.cuda_context_gib if args.cuda_context_gib is not None else CUDA_CONTEXT_GIB
+
+
+def _compute_act_count(args) -> float:
+    return args.compute_act_count if args.compute_act_count is not None else COMPUTE_BUFFER_ACT_COUNT
+
+
 def _add_common(p: argparse.ArgumentParser) -> None:
+    # The geometry flags default to a `None` sentinel (not the preset value) so
+    # `_check_geometry_fully_specified` can tell an omitted flag from one the
+    # user explicitly set to a value that equals the preset default. Omitted
+    # (None) flags are filled from the preset in `_build_model` / the helpers.
     p.add_argument("--gpu-name", default=RTX_3090.name)
     p.add_argument("--vram", type=float, default=RTX_3090.vram_gib,
                    help="GPU VRAM in GiB")
     p.add_argument("--model-name", default=QWEN3_30B_A3B.name)
-    p.add_argument("--n-layers", type=int, default=QWEN3_30B_A3B.n_layers)
-    p.add_argument("--hidden", type=int, default=QWEN3_30B_A3B.hidden)
-    p.add_argument("--n-kv-heads", type=int, default=QWEN3_30B_A3B.n_kv_heads)
-    p.add_argument("--head-dim", type=int, default=QWEN3_30B_A3B.head_dim)
-    p.add_argument("--weights", type=float, default=QWEN3_30B_A3B.weights_gib,
+    p.add_argument("--n-layers", type=int, default=None)
+    p.add_argument("--hidden", type=int, default=None)
+    p.add_argument("--n-kv-heads", type=int, default=None)
+    p.add_argument("--head-dim", type=int, default=None)
+    p.add_argument("--weights", type=float, default=None,
                    help="quantized weight footprint in VRAM (GiB)")
+    p.add_argument("--cuda-context-gib", type=float, default=None,
+                   help="fixed CUDA runtime + driver reservation (GiB); "
+                        "override for a non-reference-rig GPU")
+    p.add_argument("--compute-act-count", type=float, default=None,
+                   help="effective context-sized activation-buffer count; "
+                        "override for a non-reference-rig GPU")
     p.add_argument("--kv-quant", default="f16", choices=sorted(KV_QUANT_BYTES))
     p.add_argument("--safety-fraction", type=float, default=DEFAULT_SAFETY_FRACTION)
+
+
+def _check_geometry_fully_specified(args) -> None:
+    """Refuse an ambiguous mix of a non-reference model/GPU label with any
+    geometry field still at the reference-rig (Qwen3-30B-A3B / RTX 3090)
+    default.
+
+    Without this, forgetting a single geometry flag while modeling a
+    different model/GPU silently falls back to the reference rig's numbers
+    under the *new* label -- e.g. printing a Llama-3-8B verdict built from
+    the Qwen3-30B-A3B weight footprint. Raises ValueError naming exactly
+    which fields are still defaulted so the fix is obvious.
+    """
+    diverges = args.model_name != QWEN3_30B_A3B.name or args.gpu_name != RTX_3090.name
+    if not diverges:
+        return
+    # A field counts as "not provided" only when it is genuinely omitted
+    # (still the `None` sentinel) -- NOT when the user explicitly passed a value
+    # that happens to equal the preset default (e.g. --head-dim 128).
+    provided = {
+        "--weights": args.weights,
+        "--n-layers": args.n_layers,
+        "--hidden": args.hidden,
+        "--n-kv-heads": args.n_kv_heads,
+        "--head-dim": args.head_dim,
+        "--cuda-context-gib": args.cuda_context_gib,
+        "--compute-act-count": args.compute_act_count,
+    }
+    omitted = [flag for flag, value in provided.items() if value is None]
+    if omitted:
+        raise ValueError(
+            "--model-name/--gpu-name differ from the built-in "
+            f"{QWEN3_30B_A3B.name} / {RTX_3090.name} preset, but "
+            + ", ".join(omitted)
+            + " was/were not provided. Pass explicit values for all of them "
+              "(or leave --model-name/--gpu-name at the preset) -- otherwise "
+              "the verdict would be silently computed from the wrong "
+              "card/model's numbers."
+        )
 
 
 def _print_breakdown(res: dict) -> None:
@@ -68,8 +135,10 @@ def _print_breakdown(res: dict) -> None:
 
 
 def cmd_classify(args) -> int:
+    _check_geometry_fully_specified(args)
     gpu, model = _build_gpu(args), _build_model(args)
-    res = classify(gpu, model, args.context, args.kv_quant, args.safety_fraction)
+    res = classify(gpu, model, args.context, args.kv_quant, args.safety_fraction,
+                   _cuda_context_gib(args), _compute_act_count(args))
     print(f"{model.name} @ {gpu.name}  context={args.context}  kv={args.kv_quant}")
     _print_breakdown(res)
     print(f"\nVERDICT: {res['verdict'].upper()}")
@@ -84,13 +153,17 @@ def cmd_classify(args) -> int:
 
 
 def cmd_ceiling(args) -> int:
+    _check_geometry_fully_specified(args)
     gpu, model = _build_gpu(args), _build_model(args)
-    ctx = safe_max_context(gpu, model, args.kv_quant, args.safety_fraction, step=args.step)
+    ctx = safe_max_context(gpu, model, args.kv_quant, args.safety_fraction, step=args.step,
+                           cuda_context_gib=_cuda_context_gib(args),
+                           compute_act_count=_compute_act_count(args))
     print(f"{model.name} @ {gpu.name}  kv={args.kv_quant}  safety={args.safety_fraction}")
     if ctx == 0:
         print("SAFE MAX CONTEXT: 0 (weights alone exceed the budget)")
         return 0
-    res = classify(gpu, model, ctx, args.kv_quant, args.safety_fraction)
+    res = classify(gpu, model, ctx, args.kv_quant, args.safety_fraction,
+                   _cuda_context_gib(args), _compute_act_count(args))
     print(f"SAFE MAX CONTEXT: {ctx}  (predicted {res['predicted_total_gib']:.3f} GiB, "
           f"headroom {res['headroom_gib']:.3f} GiB)")
     return 0
@@ -113,7 +186,7 @@ def cmd_calibrate(args) -> int:
     print()
     print(f"  GQA-aware (this tool) held-out RMSE : {r['gqa_holdout_rmse_gib']:.3f} GiB")
     print(f"  naive constant baseline held-out RMSE: {r['naive_holdout_rmse_gib']:.3f} GiB "
-          f"({r['rmse_improvement_factor']:.0f}x worse)")
+          f"({r['rmse_improvement_label']})")
     if r["true_vram_at_wedge_gib"] is not None:
         print(f"\n  @ ctx {r['wedge_ctx']} (real {r['true_vram_at_wedge_gib']:.2f} GiB, "
               f"budget {r['budget_gib']:.2f} GiB) -- IN-SAMPLE/TRAIN point, "

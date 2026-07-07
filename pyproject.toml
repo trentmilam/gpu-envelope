@@ -16,3 +16,6 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 include = ["gpuenvelope*"]
+
+[tool.setuptools.package-data]
+gpuenvelope = ["data/*.csv"]
