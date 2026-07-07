@@ -259,9 +259,10 @@ def recovery_ladder(context: int, verdict: str, gpu_name: str) -> list[dict]:
         {
             "rung": 3,
             "name": "cold power-cycle",
-            "action": "hard AC cold-cycle via smart plug (only cure for an "
-                      "Xid-wedged card: GSP hang, MMU fault, illegal-memory). "
-                      "Wait for the host to self-boot, then reload under ceiling.",
+            "action": "a hard power-cycle via a switchable PDU / smart outlet -- "
+                      "often the only recovery for a truly hung card (a driver-level "
+                      "hang that ignores software reset). Wait for the host to "
+                      "self-boot, then reload under the ceiling.",
             "disruptive": "high",
             "recovers_hard_wedge": True,
         },
