@@ -24,7 +24,8 @@ parameter is `COMPUTE_BUFFER_ACT_COUNT`. Two free parameters (intercept,
 act_count) => identifiable from >=2 points, well-determined from >=5.
 
 Deterministic, offline, numpy + stdlib only. No GPU workload is run here; a
-live capture is operator-optional (see the CSV header for the capture command).
+live capture on your own card is optional (see the CSV header for the capture
+command).
 """
 from __future__ import annotations
 

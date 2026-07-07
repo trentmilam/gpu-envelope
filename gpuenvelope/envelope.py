@@ -61,6 +61,10 @@ class GpuSpec:
     name: str
     vram_gib: float
 
+    def __post_init__(self) -> None:
+        if self.vram_gib <= 0:
+            raise ValueError(f"vram_gib must be positive, got {self.vram_gib}")
+
     def budget_gib(self, safety_fraction: float = DEFAULT_SAFETY_FRACTION) -> float:
         """Usable VRAM after the safety margin."""
         return self.vram_gib * safety_fraction
@@ -74,6 +78,18 @@ class ModelSpec:
     n_kv_heads: int      # grouped-query KV heads (== attn heads if no GQA)
     head_dim: int        # per-head dimension
     weights_gib: float   # measured quantized weight footprint resident in VRAM
+
+    def __post_init__(self) -> None:
+        if self.n_layers <= 0:
+            raise ValueError(f"n_layers must be positive, got {self.n_layers}")
+        if self.n_kv_heads <= 0:
+            raise ValueError(f"n_kv_heads must be positive, got {self.n_kv_heads}")
+        if self.head_dim <= 0:
+            raise ValueError(f"head_dim must be positive, got {self.head_dim}")
+        if self.hidden <= 0:
+            raise ValueError(f"hidden must be positive, got {self.hidden}")
+        if self.weights_gib < 0:
+            raise ValueError(f"weights_gib must be non-negative, got {self.weights_gib}")
 
     @property
     def kv_width(self) -> int:
@@ -134,7 +150,15 @@ def classify(
 
     Returns a dict with the verdict, the predicted total, the budget, the
     over/under-budget delta, and the full breakdown.
+
+    Raises ValueError if safety_fraction is not in (0, 1], so a mistyped
+    fraction (e.g. 50 instead of 0.50) can never manufacture a huge fake
+    budget and silently report SAFE.
     """
+    if not (0 < safety_fraction <= 1):
+        raise ValueError(
+            f"safety_fraction must be in (0, 1], got {safety_fraction}"
+        )
     bd = predict_vram(model, context, kv_quant)
     budget = gpu.budget_gib(safety_fraction)
     total = bd.total_gib
@@ -167,6 +191,9 @@ def safe_max_context(
     budget). The result is rounded DOWN to a multiple of `step`, matching how
     llama.cpp contexts are usually configured.
     """
+    if step <= 0:
+        raise ValueError(f"step must be positive, got {step}")
+
     def fits(ctx: int) -> bool:
         return classify(gpu, model, ctx, kv_quant, safety_fraction)["safe"]
 

@@ -2,13 +2,13 @@
 #
 # THIS IS NOT A REAL CAPTURE. It is a deterministic, in-repo fixture so the
 # calibration harness has an offline, reproducible test target. The two ANCHOR
-# rows (context 49152 and 65536) are pinned to the operator's two REAL on-card
-# observations (checkpoint 2026-06-10: ~20.5 GiB clean / ~22.0 GiB wedged);
-# the other six rows interpolate along the affine law those anchors imply,
-# plus small (<=0.04 GiB) deterministic allocator-jitter noise. A real capture
-# would replace this file; the harness ingests either identically.
+# rows (context 49152 and 65536) are pinned to two real on-card observations
+# measured on 2026-06-10 (~20.5 GiB clean / ~22.0 GiB wedged); the other six
+# rows interpolate along the affine law those anchors imply, plus small
+# (<=0.04 GiB) deterministic allocator-jitter noise. A real capture would
+# replace this file; the harness ingests either identically.
 #
-# To capture a REAL sweep on your card (operator-optional), for each context C
+# To capture a real sweep on your card, for each context C
 # launch the server at that context and sample steady-state VRAM, e.g.:
 #   nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits
 # then append a "C, <MiB>" row here. Column units are MiB (24 GiB = 24576 MiB).

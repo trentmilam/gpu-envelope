@@ -1,4 +1,4 @@
-"""gpu-envelope CLI — classify a config, find the safe ceiling, show recovery.
+"""gpu-envelope CLI - classify a config, find the safe ceiling, show recovery.
 
 Examples (from repo root, using the project venv):
 
@@ -18,6 +18,7 @@ from .envelope import (
     GpuSpec,
     ModelSpec,
     KV_QUANT_BYTES,
+    DEFAULT_SAFETY_FRACTION,
     classify,
     safe_max_context,
     recovery_ladder,
@@ -53,7 +54,7 @@ def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--weights", type=float, default=QWEN3_30B_A3B.weights_gib,
                    help="quantized weight footprint in VRAM (GiB)")
     p.add_argument("--kv-quant", default="f16", choices=sorted(KV_QUANT_BYTES))
-    p.add_argument("--safety-fraction", type=float, default=0.90)
+    p.add_argument("--safety-fraction", type=float, default=DEFAULT_SAFETY_FRACTION)
 
 
 def _print_breakdown(res: dict) -> None:
@@ -115,7 +116,8 @@ def cmd_calibrate(args) -> int:
           f"({r['rmse_improvement_factor']:.0f}x worse)")
     if r["true_vram_at_wedge_gib"] is not None:
         print(f"\n  @ ctx {r['wedge_ctx']} (real {r['true_vram_at_wedge_gib']:.2f} GiB, "
-              f"budget {r['budget_gib']:.2f} GiB):")
+              f"budget {r['budget_gib']:.2f} GiB) -- IN-SAMPLE/TRAIN point, "
+              f"not part of the held-out RMSE above:")
         print(f"    GQA-aware -> {r['gqa_wedge_pred_gib']:.2f} GiB  "
               f"[{'WOULD-WEDGE' if r['gqa_flags_wedge'] else 'safe'}]")
         print(f"    naive     -> {r['naive_wedge_pred_gib']:.2f} GiB  "
@@ -151,7 +153,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (ValueError, FileNotFoundError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

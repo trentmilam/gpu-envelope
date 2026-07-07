@@ -26,12 +26,16 @@ ceiling on paper instead of by wedging the card.
 
 ## Run
 
+Requires Python 3.9+.
+
 ```
+# 0. install (from repo root):
+pip install -e .
+
 # self-test (RED/GREEN), from repo root:
 python eval.py
 
-# CLI (run from the project directory so the package is importable):
-cd gpu-envelope
+# CLI, from repo root:
 python -m gpuenvelope.cli classify --context 65536
 python -m gpuenvelope.cli ceiling
 python -m gpuenvelope.cli ceiling --kv-quant q4_0
@@ -79,23 +83,26 @@ observations. Drop in a real capture (command in the CSV header) for a real
 number — a *"fit to YOUR card in 60s"* demo:
 
 ```
-cd gpu-envelope
 python -m gpuenvelope.cli calibrate                 # synthetic fixture
 python -m gpuenvelope.cli calibrate --csv mycard.csv
 ```
 
 **Fair baseline A/B** (measured by `eval.py`, 2 interior points held out):
 
-| Estimator | What it is | Held-out RMSE | @ ctx 65536 verdict |
+| Estimator | What it is | Held-out RMSE | @ ctx 65536 (train point, not held out) |
 |-----------|-----------|---------------|---------------------|
 | **naive constant** | weights + fixed overhead — one context-independent number (HF Accelerate `estimate-memory` / "can I run this" calculators), given its **best** least-squares constant (no strawman) | **1.875 GiB** | predicts 19.38 GiB → **"safe" (fail-open — would wedge the card)** |
 | **GQA-aware (this tool)** | the KV/compute physics model, calibrated | **0.032 GiB** | predicts 21.99 GiB → **would-wedge** (real: 22.0 GiB) |
 
-The GQA-aware model's held-out RMSE is **~59× lower**, and — the point of the
-tool — the naive estimator **under-predicts the wedge config by ~2.6 GiB and
-calls it safe**, i.e. it would have cold-wedged the card. These numbers are
-*measured against the synthetic fixture*; a number is only as good as its
-telemetry, so run it on real captures before quoting it.
+The GQA-aware model's held-out RMSE is **~59× lower** on the genuinely
+held-out interior points — the two right-hand columns are *not* held out:
+`_holdout_split` always keeps the min/max-context rows (including 65536,
+the wedge point) in TRAIN, so the "@ ctx 65536" column shows in-sample
+accuracy, not validation. Even so, the naive estimator **under-predicts the
+wedge config by ~2.6 GiB and calls it safe**, i.e. it would have cold-wedged
+the card. These numbers are *measured against the synthetic fixture*; a
+number is only as good as its telemetry, so run it on real captures before
+quoting it.
 
 - **Honest calibration finding**: fitting to the real-anchored data drives
   `COMPUTE_BUFFER_ACT_COUNT` slightly **negative** (~−0.15), i.e. the shipped

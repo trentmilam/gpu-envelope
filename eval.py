@@ -11,8 +11,8 @@ asserts on the model's own output, never hard-codes the answer.
 
 Plus: bisection self-consistency, monotonicity, KV-quant ordering, fail-loud
 input handling, determinism, and a CALIBRATION check against GENUINELY
-INDEPENDENT ground truth -- the two real on-card VRAM observations from the
-operator's rig (NOT values generated from the model's own predictions). A
+INDEPENDENT ground truth -- the two real on-card VRAM observations from a
+reference RTX 3090 rig (NOT values generated from the model's own predictions). A
 paired RED case (a deliberately mis-calibrated model) must FAIL that same
 check, proving it has real discriminating power rather than being circular.
 """
@@ -42,7 +42,7 @@ from gpuenvelope.calibrate import (             # noqa: E402
 GPU = RTX_3090
 MODEL = QWEN3_30B_A3B
 WEDGE_CTX = 65536      # the config that cold-wedged the real 3090
-SAFE_CTX = 49152       # the proven-safe ceiling (checkpoint 2026-06-10)
+SAFE_CTX = 49152       # the proven-safe ceiling, measured 2026-06-10
 
 
 def main() -> int:
@@ -97,7 +97,7 @@ def main() -> int:
         try:
             fn()
             return False
-        except (ValueError, Exception):
+        except ValueError:
             return True
     checks["reject_unknown_kv_quant"] = raises(
         lambda: predict_vram(MODEL, SAFE_CTX, "nf4")
@@ -112,8 +112,8 @@ def main() -> int:
     checks["deterministic"] = a == b
 
     # ---- CALIBRATION: against GENUINELY INDEPENDENT real-card ground truth ----
-    # The two real on-card VRAM observations from a reference RTX 3090 rig
-    # (checkpoint 2026-06-10), NOT values generated from predict_vram:
+    # The two real on-card VRAM observations from a reference RTX 3090 rig,
+    # measured 2026-06-10, NOT values generated from predict_vram:
     #   ctx 49152 -> ~20.5 GiB resident (ran clean, 0-Xid)
     #   ctx 65536 -> ~22.0 GiB resident (cold-wedged the card)
     # A calibrated approximation must track these held-out points. This is the
@@ -164,8 +164,11 @@ def main() -> int:
     checks["calib_naive_underpredicts_wedge_gt_2gib"] = (
         calib["true_vram_at_wedge_gib"] - calib["naive_wedge_pred_gib"] > 2.0
     )
-    # the calibrated model tracks the real wedge-point VRAM to within noise
-    checks["calib_gqa_tracks_wedge_point"] = (
+    # the calibrated model tracks the real wedge-point VRAM to within noise.
+    # NOTE: ctx 65536 is the max context in the fixture, and `_holdout_split`
+    # structurally never holds out the extreme (min/max) rows -- so this is an
+    # IN-SAMPLE/TRAIN check, not part of the held-out RMSE numbers above.
+    checks["calib_gqa_tracks_wedge_point_insample"] = (
         abs(calib["gqa_wedge_pred_gib"] - calib["true_vram_at_wedge_gib"]) < 0.20
     )
 
@@ -203,7 +206,7 @@ def main() -> int:
     print(f"naive constant baseline held-out RMSE: {calib['naive_holdout_rmse_gib']:.3f} GiB "
           f"({calib['rmse_improvement_factor']:.0f}x worse)")
     print(f"@ ctx {calib['wedge_ctx']} (real {calib['true_vram_at_wedge_gib']:.2f} GiB, "
-          f"budget {calib['budget_gib']:.2f}): "
+          f"budget {calib['budget_gib']:.2f}) -- IN-SAMPLE/TRAIN point, not held-out: "
           f"GQA-aware -> {calib['gqa_wedge_pred_gib']:.2f} GiB "
           f"[{'would-wedge' if calib['gqa_flags_wedge'] else 'SAFE'}]  |  "
           f"naive -> {calib['naive_wedge_pred_gib']:.2f} GiB "
