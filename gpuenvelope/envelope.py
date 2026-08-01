@@ -64,6 +64,11 @@ class GpuSpec:
     def __post_init__(self) -> None:
         if self.vram_gib <= 0:
             raise ValueError(f"vram_gib must be positive, got {self.vram_gib}")
+        if self.vram_gib > 2048:
+            raise ValueError(
+                f"vram_gib is GiB, got {self.vram_gib} — no single GPU carries that; "
+                "a MiB value entered as GiB produces exactly this"
+            )
 
     def budget_gib(self, safety_fraction: float = DEFAULT_SAFETY_FRACTION) -> float:
         """Usable VRAM after the safety margin."""

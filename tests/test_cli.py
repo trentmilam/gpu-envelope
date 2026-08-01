@@ -64,6 +64,37 @@ def main() -> int:
         "error:" in err and "Traceback" not in err
     )
 
+    # ---- regression: numeric override under the trusted preset label --------
+    # was: --vram 240 (a fat-fingered 24) printed VERDICT: SAFE for the
+    # documented 65536-ctx wedge configuration, still labeled "@ RTX 3090"
+    code, out, err = _run(["classify", "--context", "65536", "--vram", "240"])
+    checks["vram_override_under_preset_label_errors"] = code != 0
+    checks["vram_override_under_preset_label_not_safe"] = "VERDICT: SAFE" not in out
+
+    # explicitly passing the preset's own value stays allowed
+    code, out, _ = _run(["classify", "--context", "65536", "--vram", "24"])
+    checks["explicit_preset_equal_vram_still_runs"] = (
+        code == 0 and "WOULD-WEDGE" in out
+    )
+
+    # the legitimate path -- a custom rig with full geometry -- still works
+    code, out, _ = _run([
+        "classify", "--context", "49152", "--gpu-name", "RTX 5090", "--vram", "32",
+        "--model-name", "custom-30b", "--weights", "18", "--n-layers", "48",
+        "--hidden", "2048", "--n-kv-heads", "4", "--head-dim", "128",
+        "--cuda-context-gib", "1.4", "--compute-act-count", "2",
+    ])
+    checks["full_custom_geometry_still_runs"] = code == 0
+
+    # a MiB value entered as GiB is rejected even on a fully-specified rig
+    code, out, err = _run([
+        "classify", "--context", "49152", "--gpu-name", "big", "--vram", "32607",
+        "--model-name", "custom-30b", "--weights", "18", "--n-layers", "48",
+        "--hidden", "2048", "--n-kv-heads", "4", "--head-dim", "128",
+        "--cuda-context-gib", "1.4", "--compute-act-count", "2",
+    ])
+    checks["mib_as_gib_unit_slip_errors"] = code != 0
+
     print("=== gpu-envelope CLI test (measured) ===")
     for k, v in checks.items():
         print(f"{'OK  ' if v else 'FAIL'} {k}")

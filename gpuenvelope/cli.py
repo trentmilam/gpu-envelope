@@ -34,7 +34,8 @@ from .envelope import (
 
 
 def _build_gpu(args) -> GpuSpec:
-    return GpuSpec(name=args.gpu_name, vram_gib=args.vram)
+    vram = args.vram if args.vram is not None else RTX_3090.vram_gib
+    return GpuSpec(name=args.gpu_name, vram_gib=vram)
 
 
 def _build_model(args) -> ModelSpec:
@@ -66,7 +67,7 @@ def _add_common(p: argparse.ArgumentParser) -> None:
     # user explicitly set to a value that equals the preset default. Omitted
     # (None) flags are filled from the preset in `_build_model` / the helpers.
     p.add_argument("--gpu-name", default=RTX_3090.name)
-    p.add_argument("--vram", type=float, default=RTX_3090.vram_gib,
+    p.add_argument("--vram", type=float, default=None,
                    help="GPU VRAM in GiB")
     p.add_argument("--model-name", default=QWEN3_30B_A3B.name)
     p.add_argument("--n-layers", type=int, default=None)
@@ -98,11 +99,41 @@ def _check_geometry_fully_specified(args) -> None:
     """
     diverges = args.model_name != QWEN3_30B_A3B.name or args.gpu_name != RTX_3090.name
     if not diverges:
+        # The mirror-image mislabel: an explicitly-passed geometry value that
+        # DIFFERS from the preset while both labels still claim the preset rig.
+        # Without this, `--vram 240` (a fat-fingered 24) prints a SAFE verdict
+        # under the trusted "RTX 3090" label -- reproducing the exact
+        # false-SAFE class this tool exists to prevent. Explicitly passing a
+        # value EQUAL to the preset stays allowed.
+        preset_vals = {
+            "--vram": (args.vram, RTX_3090.vram_gib),
+            "--weights": (args.weights, QWEN3_30B_A3B.weights_gib),
+            "--n-layers": (args.n_layers, QWEN3_30B_A3B.n_layers),
+            "--hidden": (args.hidden, QWEN3_30B_A3B.hidden),
+            "--n-kv-heads": (args.n_kv_heads, QWEN3_30B_A3B.n_kv_heads),
+            "--head-dim": (args.head_dim, QWEN3_30B_A3B.head_dim),
+        }
+        mismatched = [
+            f"{flag} {value}"
+            for flag, (value, preset) in preset_vals.items()
+            if value is not None and value != preset
+        ]
+        if mismatched:
+            raise ValueError(
+                ", ".join(mismatched)
+                + " differ(s) from the built-in "
+                f"{QWEN3_30B_A3B.name} / {RTX_3090.name} preset while "
+                "--model-name/--gpu-name still claim the preset rig. Name the "
+                "actual model/GPU (and provide its full geometry) -- otherwise "
+                "the verdict would print altered numbers under the trusted "
+                "preset label."
+            )
         return
     # A field counts as "not provided" only when it is genuinely omitted
     # (still the `None` sentinel) -- NOT when the user explicitly passed a value
     # that happens to equal the preset default (e.g. --head-dim 128).
     provided = {
+        "--vram": args.vram,
         "--weights": args.weights,
         "--n-layers": args.n_layers,
         "--hidden": args.hidden,
