@@ -20,7 +20,7 @@ from .envelope import (
     QWEN3_30B_A3B,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 _CALIBRATE_NAMES = {
     "load_telemetry_csv",
