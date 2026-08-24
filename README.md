@@ -1,5 +1,7 @@
 # gpu-envelope
 
+[![CI](https://github.com/trentmilam/gpu-envelope/actions/workflows/ci.yml/badge.svg)](https://github.com/trentmilam/gpu-envelope/actions/workflows/ci.yml)
+
 When you run a large language model on your own GPU, one setting can quietly
 wreck the session: context length, the amount of text the model holds in
 memory at once. Push it too high and the card runs past its memory (VRAM) or
