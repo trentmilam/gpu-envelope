@@ -1,4 +1,4 @@
-"""gpu-envelope eval — RED/GREEN self-test, exits 0 only if all checks pass.
+"""gpu-envelope eval: RED/GREEN self-test, exits 0 only if all checks pass.
 
     python eval.py
 
@@ -6,12 +6,12 @@ FIRST MILESTONE (the real mechanism, no rigged verdicts):
   RED   : a context above the safe ceiling (64k on a 24 GiB card) is flagged
           `would-wedge` with the PREDICTED VRAM genuinely over the budget.
   GREEN : the proven-safe context (49152) passes with real headroom.
-Both verdicts come from `classify(...)` run over the physics model -- the test
+Both verdicts come from `classify(...)` run over the physics model; the test
 asserts on the model's own output, never hard-codes the answer.
 
 Plus: bisection self-consistency, monotonicity, KV-quant ordering, fail-loud
 input handling, determinism, and a CALIBRATION check against GENUINELY
-INDEPENDENT ground truth -- the two real on-card VRAM observations from a
+INDEPENDENT ground truth: the two real on-card VRAM observations from a
 reference RTX 3090 rig (NOT values generated from the model's own predictions). A
 paired RED case (a deliberately mis-calibrated model) must FAIL that same
 check, proving it has real discriminating power rather than being circular.
@@ -69,7 +69,7 @@ def main() -> int:
     checks["ceiling_itself_safe"] = classify(GPU, MODEL, ceiling)["safe"]
     checks["ceiling_plus_step_unsafe"] = not classify(GPU, MODEL, ceiling + 256)["safe"]
 
-    # ---- monotonicity: more context => more VRAM (never decreases) -----------
+    # ---- monotonicity: more context means more VRAM (never decreases) -------
     totals = [predict_vram(MODEL, c).total_gib for c in range(4096, 131072, 4096)]
     checks["vram_monotonic_in_context"] = all(
         b > a for a, b in zip(totals, totals[1:])
@@ -106,7 +106,7 @@ def main() -> int:
         lambda: predict_vram(MODEL, 0)
     )
 
-    # ---- determinism: identical inputs -> identical prediction ---------------
+    # ---- determinism: identical inputs produce identical predictions --------
     a = predict_vram(MODEL, SAFE_CTX).total_gib
     b = predict_vram(MODEL, SAFE_CTX).total_gib
     checks["deterministic"] = a == b
@@ -119,7 +119,7 @@ def main() -> int:
     # A calibrated approximation must track these held-out points. This is the
     # only telemetry we actually have; a wider table needs the physical card.
     REF_MEASURED = {49152: 20.5, 65536: 22.0}
-    CALIB_TOL = 0.03   # honest bound the real observations meet (measured ~2.3%)
+    CALIB_TOL = 0.03   # tolerance the real observations meet (measured ~2.3%)
     ref_ctxs = sorted(REF_MEASURED)
     ref_preds = np.array([predict_vram(MODEL, c).total_gib for c in ref_ctxs])
     ref_meas = np.array([REF_MEASURED[c] for c in ref_ctxs], dtype=float)
@@ -127,7 +127,7 @@ def main() -> int:
     checks["calibration_vs_real_card_under_3pct"] = float(ref_rel_err.max()) < CALIB_TOL
 
     # RED (proves the check is NOT vacuous): a deliberately mis-calibrated model
-    # -- wrong resident-weight footprint -- must FAIL the SAME check. The old
+    # (wrong resident-weight footprint) must FAIL the SAME check. The old
     # circular check (measured := preds + noise) could never fail; this one does.
     bad_model = replace(MODEL, weights_gib=MODEL.weights_gib - 5.0)
     bad_preds = np.array([predict_vram(bad_model, c).total_gib for c in ref_ctxs])
@@ -139,7 +139,7 @@ def main() -> int:
     # ---- CALIBRATION HARNESS: measured held-out A/B vs the naive baseline ----
     # Ingest the committed SYNTHETIC nvidia-smi sweep (8 load points), fit the
     # free constants on a TRAIN split, and MEASURE a genuine held-out validation
-    # RMSE -- the honest number the old 2-anchor "2.3%" (in-sample) never was.
+    # RMSE: the number the old 2-anchor "2.3%" (in-sample) never was.
     # Head to head against the fair naive incumbent (weights + fixed overhead,
     # HF-Accelerate style; a context-independent estimate given its best LSQ
     # constant). The gap is asserted from measured numbers, not claimed.
@@ -166,7 +166,7 @@ def main() -> int:
     )
     # the calibrated model tracks the real wedge-point VRAM to within noise.
     # NOTE: ctx 65536 is the max context in the fixture, and `_holdout_split`
-    # structurally never holds out the extreme (min/max) rows -- so this is an
+    # structurally never holds out the extreme (min/max) rows, so this is an
     # IN-SAMPLE/TRAIN check, not part of the held-out RMSE numbers above.
     checks["calib_gqa_tracks_wedge_point_insample"] = (
         abs(calib["gqa_wedge_pred_gib"] - calib["true_vram_at_wedge_gib"]) < 0.20

@@ -1,8 +1,8 @@
 """Real-card calibration harness for the VRAM envelope model.
 
 The rest of the tool ships a *physics* VRAM model whose free constants were fit
-to only two anecdotal on-card points -- with three free constants and two
-observations that fit is underdetermined, so its in-sample residual is
+to only two anecdotal on-card points. With three free constants and two
+observations, that fit is underdetermined, so its in-sample residual is
 trivially ~0 and says nothing about predictive power. This module closes that
 gap: it INGESTS an nvidia-smi telemetry sweep (>=5 load points), fits the
 identifiable free constants by least squares on a TRAIN split, and reports a
@@ -10,18 +10,18 @@ genuine **held-out validation RMSE** on points the fit never saw.
 
 It also ships the fair head-to-head baseline the portfolio claim rests on: the
 naive incumbent estimator (weights + fixed overhead, i.e. what HF Accelerate's
-`estimate-memory` and community "can I run this" calculators report -- a single
+`estimate-memory` and community "can I run this" calculators report: a single
 context-independent number). We give that baseline its *best possible* constant
 (the least-squares constant == the training mean), so it is not a strawman, and
 then MEASURE that it still fails to track context-driven KV growth and would
 call the known-wedge config "safe".
 
 Identifiability note: from (context, vram) telemetry alone, `weights_gib` and
-`CUDA_CONTEXT_GIB` are not separately identifiable -- only their sum (the
+`CUDA_CONTEXT_GIB` are not separately identifiable; only their sum (the
 intercept) is. The KV slope is FIXED by the model geometry
 (`2*n_layers*n_kv_heads*head_dim*bytes_per_elem`), so the only free slope
 parameter is `COMPUTE_BUFFER_ACT_COUNT`. Two free parameters (intercept,
-act_count) => identifiable from >=2 points, well-determined from >=5.
+act_count) are identifiable from >=2 points, well-determined from >=5.
 
 Deterministic, offline, numpy + stdlib only. No GPU workload is run here; a
 live capture on your own card is optional (see the CSV header for the capture
@@ -54,7 +54,7 @@ def load_telemetry_csv(path: str) -> tuple[np.ndarray, np.ndarray]:
 
     Expected columns: a `context` column and a memory column. Memory values may
     carry an nvidia-smi ``MiB``/``GiB`` unit suffix (stripped here); the memory
-    header decides the unit (``MiB`` -> divide by 1024, ``GiB`` -> as-is).
+    header decides the unit (``MiB`` divides by 1024, ``GiB`` is used as-is).
     ``#`` comment lines and the header row are skipped. Raises ValueError on a
     malformed / empty file so a bad capture fails loud rather than silently
     yielding garbage constants.
@@ -164,7 +164,7 @@ def fit_gqa_aware(contexts: np.ndarray, vram_gib: np.ndarray,
 def fit_naive_constant(contexts: np.ndarray, vram_gib: np.ndarray) -> Fit:
     """Fair naive incumbent: a context-INDEPENDENT estimate (weights + fixed
     overhead, HF-Accelerate style). Its best least-squares constant is the mean
-    of the training VRAM, which we hand it -- no crippling."""
+    of the training VRAM, which we hand it, so the baseline isn't crippled."""
     vram_gib = np.asarray(vram_gib, dtype=float)
     return Fit(
         kind="naive-constant",

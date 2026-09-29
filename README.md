@@ -55,7 +55,7 @@ python -m gpuenvelope.cli ceiling --kv-quant q4_0
 Defaults model the RTX 3090 + Qwen3-30B-A3B IQ4_XS calibration case. Every
 geometry field is overridable (`--vram`, `--n-layers`, `--hidden`,
 `--n-kv-heads`, `--head-dim`, `--weights`, `--cuda-context-gib`,
-`--compute-act-count`, `--kv-quant`, `--safety-fraction` — the fraction of
+`--compute-act-count`, `--kv-quant`, `--safety-fraction`: the fraction of
 VRAM you're willing to use; 0.9 caps you at 90% of the card) to model any
 other card/model. `--cuda-context-gib` and `--compute-act-count` are the two
 physics constants calibrated on the reference rig: to model a different
@@ -69,7 +69,7 @@ rig's.
 From `eval.py` (exit code `0`, all 30 checks pass, measured on the reference machine
 2026-07-04, numpy 2.5.0). These are the physics model's self-consistency
 checks against two real on-card anchor points, not an independent hardware
-benchmark; see "Honest scope" below and the held-out calibration harness
+benchmark; see "What this doesn't do" below and the held-out calibration harness
 further down for the number that actually validates on unseen data:
 
 | Config | Predicted VRAM | Budget (90% of 24 GiB) | Verdict |
@@ -83,12 +83,12 @@ further down for the number that actually validates on unseen data:
   GiB @ 49152 clean, ~22 GiB @ 65536 wedged), which are not derived from the
   model, the shipped constants track to within ~2.3% max relative error.
   This is an in-sample consistency check on two anchors, not a validation
-  set; see the calibration harness below for the honest held-out number.
+  set; see the calibration harness below for the held-out number.
 
 ## Calibration harness: held-out validation and a measured baseline A/B
 
 The earlier story rested on two anecdotal points fit by three free
-constants — underdetermined, so the residual is trivially ~0 and proves
+constants. That's underdetermined, so the residual is trivially ~0 and proves
 nothing about predictive power. `gpuenvelope/calibrate.py` fixes that: it
 ingests an nvidia-smi telemetry sweep, fits the identifiable free constants
 on a train split, and reports a genuine held-out validation RMSE
@@ -113,7 +113,7 @@ Fair baseline A/B (measured by `eval.py`, 2 interior points held out):
 
 | Estimator | What it is | Held-out RMSE | @ ctx 65536 (train point, not held out) |
 |-----------|-----------|---------------|---------------------|
-| naive constant | weights + fixed overhead — one context-independent number (HF Accelerate `estimate-memory` / "can I run this" calculators), given its best least-squares constant (no strawman) | 1.875 GiB | predicts 19.38 GiB → "safe" (fail-open — would wedge the card) |
+| naive constant | weights + fixed overhead (one context-independent number; HF Accelerate `estimate-memory` / "can I run this" calculators), given its best least-squares constant (no strawman) | 1.875 GiB | predicts 19.38 GiB → "safe" (fail-open; would wedge the card) |
 | GQA-aware (this tool) | the KV/compute physics model, calibrated | 0.032 GiB | predicts 21.99 GiB → would-wedge (real: 22.0 GiB) |
 
 The GQA-aware model's held-out RMSE is ~59× lower on the genuinely held-out
@@ -121,12 +121,12 @@ interior points. The two right-hand columns are not held out:
 `_holdout_split` always keeps the min/max-context rows (including 65536,
 the wedge point) in TRAIN, so the "@ ctx 65536" column shows in-sample
 accuracy, not validation. Even so, the naive estimator under-predicts the
-wedge config by ~2.6 GiB and calls it safe — it would have cold-wedged the
+wedge config by ~2.6 GiB and calls it safe. It would have cold-wedged the
 card. These numbers are measured against the synthetic fixture; a number is
 only as good as its telemetry, so run it on real captures before quoting it.
 
-- Honest calibration finding: fitting to the real-anchored data drives
-  `COMPUTE_BUFFER_ACT_COUNT` slightly negative (~−0.15) — the shipped
+- Calibration finding: fitting to the real-anchored data drives
+  `COMPUTE_BUFFER_ACT_COUNT` slightly negative (~−0.15): the shipped
   constant (4.0) mildly over-states context growth, consistent with the
   ~2.3% over-prediction at high context. The harness surfaces this rather
   than hiding it.
@@ -140,14 +140,14 @@ only as good as its telemetry, so run it on real captures before quoting it.
 failure case and passes the clean case through the same physics model, with
 no hard-coded verdicts:
 
-- RED — the known-wedge context (65536) is flagged `would-wedge` with the
+- RED: the known-wedge context (65536) is flagged `would-wedge` with the
   predicted total strictly over budget.
-- GREEN — the proven-safe context (49152) passes with positive headroom.
+- GREEN: the proven-safe context (49152) passes with positive headroom.
 - The bisected ceiling also lies strictly between the two and is itself safe
   while `ceiling + step` is not; VRAM is monotonic in context; KV-quant sizes
   order `q4_0 < q8_0 < f16`; bad inputs fail loud; predictions are deterministic.
 
-## Honest scope
+## What this doesn't do
 
 - The VRAM model is a calibrated approximation, not a measurement. It uses
   the standard llama.cpp KV-cache sizing formula
@@ -162,7 +162,7 @@ no hard-coded verdicts:
 - The recovery ladder describes operational procedure; the tool does not
   execute reboots or power-cycles.
 
-## Prior art
+## Related work
 
 - KV-cache sizing: the formula follows llama.cpp (`llama_kv_cache_init`;
   `--cache-type-k` / `--cache-type-v`) and the GQA KV width
@@ -170,8 +170,8 @@ no hard-coded verdicts:
   context than the hidden dim implies.
 - VRAM estimators exist (e.g. community "can I run this model" calculators
   and HF Accelerate's `estimate-memory`), but they target weights and a
-  single context point. The combination here — a bisected safe ceiling with
-  an explicit out-of-memory/thermal margin plus a wedge-recovery ladder — is
+  single context point. The combination here (a bisected safe ceiling with
+  an explicit out-of-memory/thermal margin, plus a wedge-recovery ladder) is
   not, to my knowledge, shipped as a standalone OSS tool.
 
 ## Name / registry note
@@ -182,4 +182,4 @@ GitHub and rename if it collides (e.g. `llm-vram-envelope`,
 
 ## License
 
-MIT — Copyright (c) 2026 Trent Milam. See `LICENSE`.
+MIT, copyright (c) 2026 Trent Milam. See `LICENSE`.

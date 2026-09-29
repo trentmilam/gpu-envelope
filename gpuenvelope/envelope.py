@@ -2,7 +2,7 @@
 
 The VRAM model is a CALIBRATED APPROXIMATION of llama.cpp GPU memory use for a
 decoder-only transformer served fully on one card. It is deterministic and
-depends only on the config numbers passed in -- no wall-clock, no RNG, no I/O.
+depends only on the config numbers passed in: no wall-clock, no RNG, no I/O.
 
 Memory decomposition (all in GiB):
 
@@ -14,7 +14,7 @@ Memory decomposition (all in GiB):
   * kv_cache     : llama.cpp sizes the KV cache as
                        2 (K and V)  x  n_layers  x  context
                        x  (n_kv_heads * head_dim)  x  bytes_per_element
-                   n_kv_heads * head_dim is the *grouped* KV width -- this is
+                   n_kv_heads * head_dim is the *grouped* KV width. This is
                    why GQA models (few KV heads) fit far more context than the
                    hidden dim alone would suggest. bytes_per_element comes from
                    the KV-cache quantization (f16 / q8_0 / q4_0).
@@ -26,8 +26,8 @@ Calibration target (measured on a reference RTX 3090 rig):
   RTX 3090 24 GiB, Qwen3-30B-A3B IQ4_XS, f16 KV.
     - ctx 49152 sits at ~20.5 GiB and runs 0-Xid (SAFE).
     - ctx 65536 pushed KV to ~22 GiB and cold-wedged the card (WOULD-WEDGE).
-  This model predicts ~20.7 GiB @ 49152 and ~22.5 GiB @ 65536 -- consistent
-  with both observations. See README for the honest-scope note: exact bytes
+  This model predicts ~20.7 GiB @ 49152 and ~22.5 GiB @ 65536, consistent
+  with both observations. See README for the "what this doesn't do" note: exact bytes
   need the physical card; this tool finds the *ceiling* and the recovery path.
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ CUDA_CONTEXT_GIB = 0.60
 # compute buffer scales linearly with context * hidden * 2 bytes.
 COMPUTE_BUFFER_ACT_COUNT = 4.0
 # Fraction of raw VRAM we allow the predicted total to occupy. The gap is the
-# OOM / thermal safety margin -- consumer cards wedge before hitting the metal.
+# OOM / thermal safety margin: consumer cards wedge before hitting the metal.
 DEFAULT_SAFETY_FRACTION = 0.90
 
 
@@ -223,7 +223,7 @@ def safe_max_context(
         return 0
 
     hi_units = ctx_hi // step
-    if fits(hi_units * step):         # even the ceiling fits -> return it
+    if fits(hi_units * step):         # even the ceiling fits, so return it
         return hi_units * step
 
     # invariant: fits(lo_units*step) is True, fits(hi_units*step) is False
@@ -237,7 +237,7 @@ def safe_max_context(
 
 
 def recovery_ladder(context: int, verdict: str, gpu_name: str) -> list[dict]:
-    """Escalating wedge-recovery ladder, least->most disruptive.
+    """Escalating wedge-recovery ladder, least to most disruptive.
 
     The rungs mirror a standard anti-wedge recovery ladder: try the cheap
     software restart first, then a network-triggered OS reboot, and only fall

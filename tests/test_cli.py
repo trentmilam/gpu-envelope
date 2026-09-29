@@ -77,7 +77,7 @@ def main() -> int:
         code == 0 and "WOULD-WEDGE" in out
     )
 
-    # the legitimate path -- a custom rig with full geometry -- still works
+    # the legitimate path (a custom rig with full geometry) still works
     code, out, _ = _run([
         "classify", "--context", "49152", "--gpu-name", "RTX 5090", "--vram", "32",
         "--model-name", "custom-30b", "--weights", "18", "--n-layers", "48",

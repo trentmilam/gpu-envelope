@@ -9,7 +9,7 @@ Examples (from repo root, using the project venv):
 Defaults model to Qwen3-30B-A3B IQ4_XS and gpu to the RTX 3090 (the calibration
 case). To model a different card/model, override --model-name/--gpu-name
 *and* every geometry flag (--weights, --n-layers, --hidden, --n-kv-heads,
---head-dim, --cuda-context-gib, --compute-act-count) -- leaving any of them
+--head-dim, --cuda-context-gib, --compute-act-count). Leaving any of them
 at the reference-rig default raises an error rather than silently mixing a
 new label with the old rig's numbers.
 """
@@ -93,7 +93,7 @@ def _check_geometry_fully_specified(args) -> None:
 
     Without this, forgetting a single geometry flag while modeling a
     different model/GPU silently falls back to the reference rig's numbers
-    under the *new* label -- e.g. printing a Llama-3-8B verdict built from
+    under the *new* label, e.g. printing a Llama-3-8B verdict built from
     the Qwen3-30B-A3B weight footprint. Raises ValueError naming exactly
     which fields are still defaulted so the fix is obvious.
     """
@@ -102,7 +102,7 @@ def _check_geometry_fully_specified(args) -> None:
         # The mirror-image mislabel: an explicitly-passed geometry value that
         # DIFFERS from the preset while both labels still claim the preset rig.
         # Without this, `--vram 240` (a fat-fingered 24) prints a SAFE verdict
-        # under the trusted "RTX 3090" label -- reproducing the exact
+        # under the trusted "RTX 3090" label, reproducing the exact
         # false-SAFE class this tool exists to prevent. Explicitly passing a
         # value EQUAL to the preset stays allowed.
         preset_vals = {
@@ -130,7 +130,7 @@ def _check_geometry_fully_specified(args) -> None:
             )
         return
     # A field counts as "not provided" only when it is genuinely omitted
-    # (still the `None` sentinel) -- NOT when the user explicitly passed a value
+    # (still the `None` sentinel), not when the user explicitly passed a value
     # that happens to equal the preset default (e.g. --head-dim 128).
     provided = {
         "--vram": args.vram,
